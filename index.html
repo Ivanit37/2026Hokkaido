@@ -142,6 +142,28 @@
             return `artifacts/${appId}/users/${currentDataId}/hokkaido_itinerary`;
         };
 
+        // --- 地圖相關 Helper ---
+        const openMapAppSearch = (query) => {
+             const isAndroid = /Android/i.test(navigator.userAgent);
+             const isIOS = /iPhone|iPad|iPod/i.test(navigator.userAgent);
+             const isMobile = isAndroid || isIOS;
+             const encodedQuery = encodeURIComponent(query);
+
+             if (isMobile) {
+                 if (isAndroid) {
+                     // Android: 使用 geo intent 直接呼叫地圖應用程式
+                     window.location.href = `geo:0,0?q=${encodedQuery}`;
+                 } else {
+                     // iOS: 使用 maps.google.com 格式並透過 location.href 觸發
+                     // 這種方式比 window.open 更容易被 iOS 識別為 Universal Link 並開啟 App
+                     window.location.href = `https://maps.google.com/?q=${encodedQuery}`;
+                 }
+             } else {
+                 // 電腦版：開新分頁
+                 window.open(`https://www.google.com/maps/search/?api=1&query=${encodedQuery}`, '_blank');
+             }
+        };
+
         window.openGoogleMapsRoute = () => {
             const items = window.currentItinerary || [];
             const locations = items
@@ -168,22 +190,28 @@
                 }
                 url = `https://www.google.com/maps/dir/?api=1&origin=${origin}&destination=${destination}${waypoints}`;
             }
-            window.open(url, '_blank');
+
+            // 針對路線規劃，手機版同樣使用 location.href 嘗試喚起 App
+            const isMobile = /iPhone|iPad|iPod|Android/i.test(navigator.userAgent);
+            if (isMobile) {
+                window.location.href = url;
+            } else {
+                window.open(url, '_blank');
+            }
         };
 
         window.searchLocationOnMap = () => {
             const locationVal = document.getElementById('location').value.trim();
             if (locationVal) {
-                window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationVal)}`, '_blank');
+                openMapAppSearch(locationVal);
             } else {
                 showStatusMessage("請先輸入地點關鍵字", true);
             }
         };
 
-        // 新增：尋找附近便利店 (使用 Google Maps Universal Link)
+        // 新增：尋找附近便利店 (最佳化 App 開啟體驗)
         window.searchNearbyCVS = () => {
-            // 使用 query=convenience+store 可以在 Google Maps App 中搜尋
-            window.open('https://www.google.com/maps/search/?api=1&query=convenience+store', '_blank');
+            openMapAppSearch('convenience store');
         };
 
         const updateFlightInfo = (date) => {
@@ -407,7 +435,7 @@
                 const mapBtn = card.querySelector('.map-item-btn');
                 if (mapBtn) mapBtn.addEventListener('click', (e) => { 
                     e.stopPropagation(); 
-                    window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(item.location)}`, '_blank'); 
+                    openMapAppSearch(item.location);
                 });
 
                 itineraryContainer.appendChild(card);
