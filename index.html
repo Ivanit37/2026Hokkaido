@@ -104,9 +104,21 @@
                     userId = user.uid;
                     isAuthReady = true;
                     
-                    // 優先使用 LocalStorage 儲存的「共享行程 ID」，若無則使用使用者的 UID
+                    // 1. 檢查網址參數 (?trip=xxx) - 新增功能
+                    const urlParams = new URLSearchParams(window.location.search);
+                    const linkTripId = urlParams.get('trip');
+
+                    // 2. 檢查 LocalStorage
                     const savedTripId = localStorage.getItem('custom_trip_id');
-                    currentDataId = savedTripId || userId;
+                    
+                    // 優先級: 網址參數 > LocalStorage > 原生 UserID
+                    if (linkTripId) {
+                        currentDataId = linkTripId;
+                        // 如果網址有帶參數，順便存入 LocalStorage，這樣下次沒帶參數也能記住
+                        localStorage.setItem('custom_trip_id', linkTripId);
+                    } else {
+                        currentDataId = savedTripId || userId;
+                    }
                     
                     updateSyncUI(); // 更新介面顯示 ID
                     loadItinerary(window.selectedDate);
@@ -418,6 +430,14 @@
             const idInput = document.getElementById('current-trip-id');
             executeCopy(idInput.value, "已複製行程代碼");
         };
+        
+        // 新增：複製完整行程連結
+        window.copyTripLink = () => {
+            const id = document.getElementById('current-trip-id').value;
+            // 確保網址正確，加上 ?trip=ID
+            const url = `${window.location.origin}${window.location.pathname}?trip=${id}`;
+            executeCopy(url, "已複製行程連結");
+        };
 
         window.copyRules = () => {
             const rulesText = document.getElementById('rules-code').innerText;
@@ -440,6 +460,10 @@
             loadItinerary(window.selectedDate);
             closeSyncModal();
             showStatusMessage("已切換至共享行程");
+            
+            // 選項：更新網址列但不重整頁面，讓使用者知道現在是在這個 trip
+            // const newUrl = `${window.location.origin}${window.location.pathname}?trip=${inputId}`;
+            // window.history.pushState({path: newUrl}, '', newUrl);
         };
 
         window.resetToMyTrip = () => {
@@ -449,6 +473,10 @@
             loadItinerary(window.selectedDate);
             closeSyncModal();
             showStatusMessage("已切換回我的行程");
+            
+            // 清除網址列參數
+            // const newUrl = `${window.location.origin}${window.location.pathname}`;
+            // window.history.pushState({path: newUrl}, '', newUrl);
         };
 
         const updateSyncUI = () => {
@@ -712,14 +740,19 @@
             
             <!-- Current ID -->
             <div class="mb-6">
-                <label class="text-xs font-medium text-zinc-400 ml-1 block mb-2">您的行程代碼 (Trip Code)</label>
+                <label class="text-xs font-medium text-zinc-400 ml-1 block mb-2">目前行程 (Current Trip)</label>
+                <div class="flex space-x-2 mb-2">
+                    <input type="text" id="current-trip-id" readonly class="flex-grow bg-zinc-900 text-white font-mono text-sm p-3 rounded-xl border border-zinc-800 focus:outline-none text-center">
+                </div>
                 <div class="flex space-x-2">
-                    <input type="text" id="current-trip-id" readonly class="flex-grow bg-zinc-900 text-white font-mono text-sm p-3 rounded-xl border border-zinc-800 focus:outline-none">
-                    <button onclick="copyTripId()" class="bg-zinc-800 text-white px-4 rounded-xl hover:bg-zinc-700 transition-colors">
-                        <span class="material-icons text-[16px]">content_copy</span>
+                     <button onclick="copyTripId()" class="flex-1 bg-zinc-800 text-white py-3 rounded-xl hover:bg-zinc-700 transition-colors text-xs font-medium">
+                        複製代碼
+                    </button>
+                    <button onclick="copyTripLink()" class="flex-1 bg-white text-black py-3 rounded-xl hover:bg-gray-200 transition-colors text-xs font-bold">
+                        複製完整連結
                     </button>
                 </div>
-                <p class="text-[10px] text-zinc-500 mt-2 ml-1">將此代碼分享給親友，即可在其他裝置檢視。</p>
+                <p class="text-[10px] text-zinc-500 mt-3 text-center">使用「完整連結」加入我的最愛，下次直接點擊即可進入。</p>
             </div>
 
             <div class="h-[1px] bg-zinc-800 w-full mb-6"></div>
