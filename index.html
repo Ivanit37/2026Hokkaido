@@ -182,6 +182,96 @@
             window.open(url, '_blank');
         };
 
+        // 新增搜尋地點功能 (不使用 API，直接跳轉)
+        window.searchLocationOnMap = () => {
+            const locationVal = document.getElementById('location').value.trim();
+            if (locationVal) {
+                window.open(`https://www.google.com/maps/search/?api=1&query=${encodeURIComponent(locationVal)}`, '_blank');
+            } else {
+                alert("請先輸入地點關鍵字，例如「札幌拉麵」，再點擊搜尋按鈕確認確切店名。");
+            }
+        };
+
+        // --- 航班資訊邏輯 ---
+        
+        /**
+         * 更新航班資訊顯示
+         * @param {string} date - 當前選擇的日期 MM/DD
+         */
+        const updateFlightInfo = (date) => {
+            const flightCard = document.getElementById('flight-info-card');
+            
+            // 預設隱藏
+            flightCard.classList.add('hidden');
+            
+            if (date === '01/04') {
+                // 去程航班
+                renderFlightCard({
+                    flightNo: 'HB008',
+                    airline: '大灣區航空 (GBA)',
+                    depCity: '香港 (HKG)',
+                    arrCity: '札幌 (CTS)',
+                    // 假設時間，實際請依據您的機票調整
+                    depTime: '08:55', 
+                    arrTime: '14:50',
+                    link: 'https://www.flightradar24.com/data/flights/hb8'
+                });
+                flightCard.classList.remove('hidden');
+            } else if (date === '01/11') {
+                // 回程航班
+                renderFlightCard({
+                    flightNo: 'HB009',
+                    airline: '大灣區航空 (GBA)',
+                    depCity: '札幌 (CTS)',
+                    arrCity: '香港 (HKG)',
+                    // 假設時間
+                    depTime: '15:50', 
+                    arrTime: '21:00',
+                    link: 'https://www.flightradar24.com/data/flights/hb9'
+                });
+                flightCard.classList.remove('hidden');
+            }
+        };
+
+        const renderFlightCard = (data) => {
+            const container = document.getElementById('flight-info-card');
+            container.innerHTML = `
+                <div class="flex items-center justify-between mb-3">
+                    <div class="flex items-center space-x-2">
+                        <span class="material-icons text-blue-400 rotate-90">flight</span>
+                        <span class="font-bold text-lg text-white">${data.flightNo}</span>
+                    </div>
+                    <span class="text-xs bg-blue-900 text-blue-200 px-2 py-1 rounded border border-blue-700">${data.airline}</span>
+                </div>
+                
+                <div class="flex justify-between items-center text-center mb-4">
+                    <div class="flex-1">
+                        <div class="text-2xl font-bold text-white">${data.depTime}</div>
+                        <div class="text-sm text-gray-400 font-bold mt-1">${data.depCity}</div>
+                    </div>
+                    
+                    <div class="flex-1 flex flex-col items-center px-2">
+                        <div class="text-xs text-gray-500 mb-1">直飛</div>
+                        <div class="w-full h-0.5 bg-gray-600 relative">
+                            <div class="absolute -right-1 -top-1 w-2 h-2 bg-gray-600 rounded-full"></div>
+                        </div>
+                    </div>
+                    
+                    <div class="flex-1">
+                        <div class="text-2xl font-bold text-white">${data.arrTime}</div>
+                        <div class="text-sm text-gray-400 font-bold mt-1">${data.arrCity}</div>
+                    </div>
+                </div>
+
+                <a href="${data.link}" target="_blank" class="block w-full text-center bg-gray-800 hover:bg-gray-700 text-blue-400 text-sm py-2 rounded-lg transition-colors border border-gray-700 hover:border-blue-500/50">
+                    <span class="flex items-center justify-center">
+                        <span class="material-icons text-sm mr-1">radar</span>
+                        查看 FlightRadar24 即時動態
+                    </span>
+                </a>
+            `;
+        };
+
         // --- Firestore 邏輯 ---
 
         const loadItinerary = (date) => {
@@ -414,6 +504,10 @@
             document.getElementById(`date-${date.replace('/', '-')}`).classList.add('bg-amber-600', 'text-white', 'shadow-lg');
 
             document.getElementById('current-date-title').textContent = `${date} 行程`;
+            
+            // 更新航班資訊 (新增的邏輯)
+            updateFlightInfo(date);
+
             if (isAuthReady) { loadItinerary(date); }
         };
 
@@ -551,6 +645,11 @@
                 <button id="google-map-btn" onclick="openGoogleMapsRoute()" class="w-full bg-gray-900 hover:bg-gray-800 border border-amber-600 text-amber-500 hover:text-amber-400 font-bold py-4 px-4 rounded-xl shadow-lg transition duration-300 flex items-center justify-center">
                     <span class="material-icons mr-2">map</span>在 Google 地圖查看路線
                 </button>
+                
+                <!-- 航班資訊卡片 (動態顯示) -->
+                <div id="flight-info-card" class="mt-4 hidden bg-gray-800 rounded-xl p-4 shadow-lg border border-gray-700">
+                    <!-- 內容由 JS 填充 -->
+                </div>
             </div>
 
             <main class="mb-24">
@@ -630,7 +729,13 @@ service cloud.firestore {
                 </div>
                 <div class="mb-4">
                     <label for="location" class="block text-sm font-medium text-gray-300 mb-1">地點</label>
-                    <input type="text" id="location" placeholder="例如：札幌電視塔" class="w-full max-w-full p-3 rounded-lg bg-gray-800 border border-gray-700 text-white focus:ring-amber-500 focus:border-amber-500">
+                    <div class="flex space-x-2">
+                        <input type="text" id="location" placeholder="例如：札幌電視塔" class="flex-grow min-w-0 p-3 rounded-lg bg-gray-800 border border-gray-700 text-white focus:ring-amber-500 focus:border-amber-500">
+                        <button type="button" onclick="searchLocationOnMap()" class="flex-shrink-0 bg-gray-700 hover:bg-gray-600 border border-gray-600 text-gray-300 hover:text-white p-3 rounded-lg transition-colors flex items-center justify-center" title="在 Google Maps 上搜尋確認店名">
+                            <span class="material-icons">search</span>
+                        </button>
+                    </div>
+                    <p class="text-xs text-gray-500 mt-1">💡 輸入關鍵字後點擊搜尋，確認確切店名後填入，導航更準確。</p>
                 </div>
                 <div class="mb-6">
                     <label for="details" class="block text-sm font-medium text-gray-300 mb-1">詳細說明</label>
