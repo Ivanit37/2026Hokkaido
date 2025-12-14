@@ -180,8 +180,9 @@
             }
         };
 
-        // 新增：尋找附近便利店
+        // 新增：尋找附近便利店 (使用 Google Maps Universal Link)
         window.searchNearbyCVS = () => {
+            // 使用 query=convenience+store 可以在 Google Maps App 中搜尋
             window.open('https://www.google.com/maps/search/?api=1&query=convenience+store', '_blank');
         };
 
