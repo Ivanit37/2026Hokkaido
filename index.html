@@ -3,11 +3,9 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>2026北海盜</title>
+    <title>2026北海道行程規劃器</title>
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
-    
-    <!-- 移除 Font Inter，改用系統字體 -->
     
     <!-- 引入 Google Material Icons -->
     <link href="https://fonts.googleapis.com/icon?family=Material+Icons" rel="stylesheet">
@@ -37,6 +35,7 @@
         
         let app, db, auth;
         let userId = null;
+        let currentDataId = null; // 用於儲存當前檢視的行程 ID (可能是自己的，也可能是共享的)
         let isAuthReady = false;
         
         // 初始化 Firebase
@@ -104,10 +103,13 @@
                 if (user) {
                     userId = user.uid;
                     isAuthReady = true;
+                    
+                    // 優先使用 LocalStorage 儲存的「共享行程 ID」，若無則使用使用者的 UID
+                    const savedTripId = localStorage.getItem('custom_trip_id');
+                    currentDataId = savedTripId || userId;
+                    
+                    updateSyncUI(); // 更新介面顯示 ID
                     loadItinerary(window.selectedDate);
-                    // document.getElementById('user-id-display').textContent = `ID: ${userId.substring(0,6)}...`;
-                    const statusMsg = document.getElementById('status-message');
-                    // initializeInitialData(); // 暫時不需要重複初始化
                 } else {
                     userId = null;
                     isAuthReady = true;
@@ -116,8 +118,9 @@
         };
 
         const getItineraryCollectionPath = () => {
-            if (!userId) return null;
-            return `artifacts/${appId}/users/${userId}/hokkaido_itinerary`;
+            if (!currentDataId) return null;
+            // 使用 currentDataId 而不是 userId，實現跨帳號存取
+            return `artifacts/${appId}/users/${currentDataId}/hokkaido_itinerary`;
         };
 
         window.openGoogleMapsRoute = () => {
@@ -213,7 +216,13 @@
             const itineraryContainer = document.getElementById('itinerary-list');
             itineraryContainer.innerHTML = '<div class="text-zinc-500 text-center py-10 text-[15px]">載入中...</div>';
 
-            if (!isAuthReady || !userId) return;
+            // 需要清除舊的監聽器，因為 DataId 可能變了
+            if (window.itineraryUnsubscribe) {
+                window.itineraryUnsubscribe();
+                window.itineraryUnsubscribe = null;
+            }
+
+            if (!isAuthReady || !currentDataId) return;
             const path = getItineraryCollectionPath();
             if (!path) return;
 
@@ -322,7 +331,7 @@
         };
 
         const saveItinerary = async (date, items) => {
-            if (!isAuthReady || !userId) { showStatusMessage('錯誤：尚未完成認證', true); return; }
+            if (!isAuthReady || !currentDataId) { showStatusMessage('錯誤：尚未就緒', true); return; }
             const path = getItineraryCollectionPath();
             if (!path) return;
             const docId = date.replace('/', '-'); 
@@ -333,6 +342,119 @@
                 if (error.code === 'permission-denied') showPermissionErrorModal();
                 else showStatusMessage(`儲存失敗: ${error.message}`, true);
             }
+        };
+
+        // --- Sync Logic ---
+        window.openSyncModal = () => {
+            const modal = document.getElementById('sync-modal');
+            modal.classList.remove('hidden');
+            setTimeout(() => {
+                modal.querySelector('.modal-content').classList.remove('scale-95', 'opacity-0');
+                modal.querySelector('.modal-content').classList.add('scale-100', 'opacity-100');
+            }, 10);
+            
+            // 填入當前 ID
+            document.getElementById('current-trip-id').value = currentDataId || 'Loading...';
+        };
+
+        window.closeSyncModal = () => {
+            const modal = document.getElementById('sync-modal');
+            const content = modal.querySelector('.modal-content');
+            content.classList.remove('scale-100', 'opacity-100');
+            content.classList.add('scale-95', 'opacity-0');
+            setTimeout(() => modal.classList.add('hidden'), 200);
+        };
+
+        /**
+         * 執行複製的通用函式，自動處理權限問題
+         */
+        const executeCopy = (text, successMessage) => {
+            // 方法一：嘗試使用 Clipboard API
+            if (navigator.clipboard && navigator.clipboard.writeText) {
+                navigator.clipboard.writeText(text)
+                    .then(() => showStatusMessage(successMessage))
+                    .catch((err) => {
+                        console.warn("Clipboard API failed, using fallback:", err);
+                        fallbackCopyText(text, successMessage);
+                    });
+            } else {
+                // 方法二：使用 execCommand 備案
+                fallbackCopyText(text, successMessage);
+            }
+        };
+
+        /**
+         * 舊版複製備案 (execCommand)
+         */
+        const fallbackCopyText = (text, successMessage) => {
+            const textArea = document.createElement("textarea");
+            textArea.value = text;
+            
+            // 確保元素不可見但存在於 DOM
+            textArea.style.position = "fixed";
+            textArea.style.left = "-9999px";
+            textArea.style.top = "0";
+            document.body.appendChild(textArea);
+            
+            textArea.focus();
+            textArea.select();
+            
+            try {
+                const successful = document.execCommand('copy');
+                if (successful) {
+                    showStatusMessage(successMessage);
+                } else {
+                    showStatusMessage("複製失敗，請手動複製", true);
+                }
+            } catch (err) {
+                console.error('Fallback copy error:', err);
+                showStatusMessage("複製失敗，請手動複製", true);
+            }
+            
+            document.body.removeChild(textArea);
+        };
+
+        window.copyTripId = () => {
+            const idInput = document.getElementById('current-trip-id');
+            executeCopy(idInput.value, "已複製行程代碼");
+        };
+
+        window.copyRules = () => {
+            const rulesText = document.getElementById('rules-code').innerText;
+            executeCopy(rulesText, "已複製規則代碼");
+        };
+
+        window.loadSharedTrip = () => {
+            const inputId = document.getElementById('shared-trip-id').value.trim();
+            if (!inputId) {
+                showStatusMessage("請輸入行程代碼", true);
+                return;
+            }
+            
+            // 儲存到 localStorage 並更新狀態
+            localStorage.setItem('custom_trip_id', inputId);
+            currentDataId = inputId;
+            updateSyncUI();
+            
+            // 重新載入資料
+            loadItinerary(window.selectedDate);
+            closeSyncModal();
+            showStatusMessage("已切換至共享行程");
+        };
+
+        window.resetToMyTrip = () => {
+            localStorage.removeItem('custom_trip_id');
+            currentDataId = userId;
+            updateSyncUI();
+            loadItinerary(window.selectedDate);
+            closeSyncModal();
+            showStatusMessage("已切換回我的行程");
+        };
+
+        const updateSyncUI = () => {
+            // 更新 UI 顯示目前是否在共享模式
+            // 這裡可以做一些視覺上的變化，目前先保持簡單
+            console.log("Current Data ID:", currentDataId);
         };
 
         // --- Modal ---
@@ -413,13 +535,6 @@
             }
         });
 
-        // 複製規則
-        window.copyRules = () => {
-            const rulesText = document.getElementById('rules-code').innerText;
-            navigator.clipboard.writeText(rulesText).then(() => {
-                showStatusMessage("已複製規則代碼");
-            });
-        };
         
         window.closePermissionModal = () => {
              document.getElementById('permission-modal').classList.add('hidden');
@@ -540,9 +655,13 @@
         <div class="max-w-xl mx-auto px-4 pt-12 pb-2"> <!-- pt-12 for status bar space feeling -->
             <header class="flex justify-between items-end mb-4">
                 <div>
-                    <h1 class="text-[34px] font-bold tracking-tight text-white leading-tight">北海盜</h1>
-                    <p class="text-zinc-500 text-[13px] font-medium mt-0.5 tracking-wide uppercase">2026 Hokkaido</p>
+                    <h1 class="text-[34px] font-bold tracking-tight text-white leading-tight">北海道之旅</h1>
+                    <p class="text-zinc-500 text-[13px] font-medium mt-0.5 tracking-wide uppercase">2026 Winter Trip</p>
                 </div>
+                <!-- Sync Button -->
+                <button onclick="openSyncModal()" class="w-9 h-9 bg-zinc-800 rounded-full flex items-center justify-center hover:bg-zinc-700 transition-colors">
+                    <span class="material-icons text-white text-[18px]">cloud_sync</span>
+                </button>
             </header>
 
             <!-- 日期導航 (橫向捲動) -->
@@ -583,6 +702,41 @@
             class="fixed bottom-8 right-6 w-14 h-14 bg-white text-black rounded-full shadow-[0_8px_30px_rgb(0,0,0,0.5)] flex items-center justify-center active:scale-90 transition-transform duration-300 z-40">
             <span class="material-icons text-3xl">add</span>
         </button>
+    </div>
+
+    <!-- Sync Modal -->
+    <div id="sync-modal" class="fixed inset-0 z-[60] flex items-center justify-center hidden p-4">
+        <div class="absolute inset-0 bg-black/60 backdrop-blur-sm" onclick="closeSyncModal()"></div>
+        <div class="modal-content relative bg-[#1c1c1e] w-full max-w-sm rounded-3xl p-6 transform scale-95 opacity-0 shadow-2xl border border-white/10">
+            <h3 class="text-xl font-bold text-white mb-4 text-center">行程同步 / 分享</h3>
+            
+            <!-- Current ID -->
+            <div class="mb-6">
+                <label class="text-xs font-medium text-zinc-400 ml-1 block mb-2">您的行程代碼 (Trip Code)</label>
+                <div class="flex space-x-2">
+                    <input type="text" id="current-trip-id" readonly class="flex-grow bg-zinc-900 text-white font-mono text-sm p-3 rounded-xl border border-zinc-800 focus:outline-none">
+                    <button onclick="copyTripId()" class="bg-zinc-800 text-white px-4 rounded-xl hover:bg-zinc-700 transition-colors">
+                        <span class="material-icons text-[16px]">content_copy</span>
+                    </button>
+                </div>
+                <p class="text-[10px] text-zinc-500 mt-2 ml-1">將此代碼分享給親友，即可在其他裝置檢視。</p>
+            </div>
+
+            <div class="h-[1px] bg-zinc-800 w-full mb-6"></div>
+
+            <!-- Join Trip -->
+            <div class="mb-6">
+                <label class="text-xs font-medium text-zinc-400 ml-1 block mb-2">載入其他行程</label>
+                <input type="text" id="shared-trip-id" placeholder="輸入行程代碼..." class="w-full bg-zinc-800/50 text-white p-3 rounded-xl focus:outline-none focus:ring-1 focus:ring-white/20 mb-3">
+                <button onclick="loadSharedTrip()" class="w-full bg-white text-black py-3 rounded-xl font-bold text-sm hover:bg-gray-200 transition-colors">
+                    載入行程
+                </button>
+            </div>
+
+            <button onclick="resetToMyTrip()" class="w-full text-zinc-500 py-2 text-xs hover:text-white transition-colors">
+                回到我的原始行程
+            </button>
+        </div>
     </div>
 
     <!-- 編輯/新增 Modal (iOS Sheet Style) -->
@@ -645,14 +799,15 @@
                 <span class="material-icons mr-2">gpp_bad</span>
                 <h3 class="font-bold text-lg">資料庫權限設定</h3>
             </div>
-            <p class="text-zinc-400 text-sm mb-4 leading-relaxed">請複製以下規則至 Firebase Console，以啟用資料寫入權限。</p>
+            <p class="text-zinc-400 text-sm mb-4 leading-relaxed">為了開啟跨裝置同步與分享功能，請務必更新您的 Firebase 安全規則，允許公開讀寫（或使用更進階的驗證）。</p>
             
             <div class="bg-black rounded-xl p-4 mb-4 border border-zinc-800">
                 <pre id="rules-code" class="text-green-400 text-xs overflow-x-auto font-mono whitespace-pre-wrap break-all">rules_version = '2';
 service cloud.firestore {
   match /databases/{database}/documents {
+    // 允許知道 ID 的人讀寫該行程
     match /artifacts/{appId}/users/{userId}/{document=**} {
-      allow read, write: if request.auth != null && request.auth.uid == userId;
+      allow read, write: if true;
     }
   }
 }</pre>
