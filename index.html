@@ -3,7 +3,10 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0, maximum-scale=1.0, user-scalable=no">
-    <title>2026北海道行程規劃器</title>
+    <title>北海盜</title>
+    <!-- 網站圖示 (Favicon) -->
+    <link rel="icon" href="hokicon.jpg" type="image/jpeg">
+    
     <!-- 引入 Tailwind CSS -->
     <script src="https://cdn.tailwindcss.com"></script>
     
@@ -35,8 +38,12 @@
         
         let app, db, auth;
         let userId = null;
-        let currentDataId = null; // 用於儲存當前檢視的行程 ID (可能是自己的，也可能是共享的)
+        let currentDataId = null; 
         let isAuthReady = false;
+
+        // UI 變數 (延後初始化)
+        let modal, modalForm, modalTitle;
+        let editingIndex = null; 
         
         // 初始化 Firebase
         if (Object.keys(firebaseConfig).length > 0) {
@@ -46,7 +53,7 @@
                 auth = getAuth(app);
             } catch (e) {
                 console.error("Firebase Initialization Error:", e);
-                showStatusMessage("Firebase 初始化失敗", true);
+                // 這裡還不能呼叫 UI 相關函式，因為 DOM 可能還沒好
             }
         } else {
             console.error("Firebase Configuration is missing.");
@@ -78,7 +85,7 @@
 
         const showPermissionErrorModal = () => {
             const modal = document.getElementById('permission-modal');
-            modal.classList.remove('hidden');
+            if(modal) modal.classList.remove('hidden');
         };
 
         const initFirebase = async () => {
@@ -175,6 +182,8 @@
 
         const updateFlightInfo = (date) => {
             const flightCard = document.getElementById('flight-info-card');
+            if (!flightCard) return;
+
             flightCard.classList.add('hidden');
             
             if (date === '01/04') {
@@ -194,6 +203,8 @@
 
         const renderFlightCard = (data) => {
             const container = document.getElementById('flight-info-card');
+            if(!container) return;
+
             container.innerHTML = `
                 <div class="flex items-center justify-between mb-4">
                     <div class="flex items-center space-x-2">
@@ -226,6 +237,8 @@
 
         const loadItinerary = (date) => {
             const itineraryContainer = document.getElementById('itinerary-list');
+            if(!itineraryContainer) return;
+
             itineraryContainer.innerHTML = '<div class="text-zinc-500 text-center py-10 text-[15px]">載入中...</div>';
 
             // 需要清除舊的監聽器，因為 DataId 可能變了
@@ -255,6 +268,7 @@
 
         const updateMapButtonState = (items) => {
             const btn = document.getElementById('google-map-btn');
+            if(!btn) return;
             const hasLocations = items.some(item => item.location && item.location.trim() !== "");
             
             if (hasLocations) {
@@ -268,6 +282,7 @@
 
         const renderItinerary = (items) => {
             const itineraryContainer = document.getElementById('itinerary-list');
+            if(!itineraryContainer) return;
             itineraryContainer.innerHTML = '';
 
             if (items.length === 0) {
@@ -359,6 +374,7 @@
         // --- Sync Logic ---
         window.openSyncModal = () => {
             const modal = document.getElementById('sync-modal');
+            if(!modal) return;
             modal.classList.remove('hidden');
             setTimeout(() => {
                 modal.querySelector('.modal-content').classList.remove('scale-95', 'opacity-0');
@@ -366,11 +382,13 @@
             }, 10);
             
             // 填入當前 ID
-            document.getElementById('current-trip-id').value = currentDataId || 'Loading...';
+            const idInput = document.getElementById('current-trip-id');
+            if(idInput) idInput.value = currentDataId || 'Loading...';
         };
 
         window.closeSyncModal = () => {
             const modal = document.getElementById('sync-modal');
+            if(!modal) return;
             const content = modal.querySelector('.modal-content');
             content.classList.remove('scale-100', 'opacity-100');
             content.classList.add('scale-95', 'opacity-0');
@@ -381,24 +399,7 @@
          * 執行複製的通用函式，自動處理權限問題
          */
         const executeCopy = (text, successMessage) => {
-            // 方法一：嘗試使用 Clipboard API
-            if (navigator.clipboard && navigator.clipboard.writeText) {
-                navigator.clipboard.writeText(text)
-                    .then(() => showStatusMessage(successMessage))
-                    .catch((err) => {
-                        console.warn("Clipboard API failed, using fallback:", err);
-                        fallbackCopyText(text, successMessage);
-                    });
-            } else {
-                // 方法二：使用 execCommand 備案
-                fallbackCopyText(text, successMessage);
-            }
-        };
-
-        /**
-         * 舊版複製備案 (execCommand)
-         */
-        const fallbackCopyText = (text, successMessage) => {
+            // 方法：使用 execCommand 備案 (相容性最高，避免 iFrame 權限問題)
             const textArea = document.createElement("textarea");
             textArea.value = text;
             
@@ -428,24 +429,29 @@
 
         window.copyTripId = () => {
             const idInput = document.getElementById('current-trip-id');
-            executeCopy(idInput.value, "已複製行程代碼");
+            if(idInput) executeCopy(idInput.value, "已複製行程代碼");
         };
         
         // 新增：複製完整行程連結
         window.copyTripLink = () => {
-            const id = document.getElementById('current-trip-id').value;
+            const idInput = document.getElementById('current-trip-id');
+            if (!idInput) return;
+            const id = idInput.value;
             // 確保網址正確，加上 ?trip=ID
             const url = `${window.location.origin}${window.location.pathname}?trip=${id}`;
             executeCopy(url, "已複製行程連結");
         };
 
         window.copyRules = () => {
-            const rulesText = document.getElementById('rules-code').innerText;
-            executeCopy(rulesText, "已複製規則代碼");
+            const rulesText = document.getElementById('rules-code');
+            if(rulesText) executeCopy(rulesText.innerText, "已複製規則代碼");
         };
 
         window.loadSharedTrip = () => {
-            const inputId = document.getElementById('shared-trip-id').value.trim();
+            const idInput = document.getElementById('shared-trip-id');
+            if(!idInput) return;
+            const inputId = idInput.value.trim();
+
             if (!inputId) {
                 showStatusMessage("請輸入行程代碼", true);
                 return;
@@ -460,10 +466,6 @@
             loadItinerary(window.selectedDate);
             closeSyncModal();
             showStatusMessage("已切換至共享行程");
-            
-            // 選項：更新網址列但不重整頁面，讓使用者知道現在是在這個 trip
-            // const newUrl = `${window.location.origin}${window.location.pathname}?trip=${inputId}`;
-            // window.history.pushState({path: newUrl}, '', newUrl);
         };
 
         window.resetToMyTrip = () => {
@@ -473,10 +475,6 @@
             loadItinerary(window.selectedDate);
             closeSyncModal();
             showStatusMessage("已切換回我的行程");
-            
-            // 清除網址列參數
-            // const newUrl = `${window.location.origin}${window.location.pathname}`;
-            // window.history.pushState({path: newUrl}, '', newUrl);
         };
 
         const updateSyncUI = () => {
@@ -486,31 +484,36 @@
         };
 
         // --- Modal ---
-        const modal = document.getElementById('itinerary-modal');
-        const modalForm = document.getElementById('itinerary-form');
-        const modalTitle = document.getElementById('modal-title');
-        let editingIndex = null; 
-
+        
         window.openAddModal = () => {
             editingIndex = null;
-            modalTitle.textContent = '新增行程';
-            modalForm.reset();
+            if(modalTitle) modalTitle.textContent = '新增行程';
+            if(modalForm) modalForm.reset();
             openModalAnimation();
         };
 
         const openEditModal = (index) => {
             editingIndex = index;
-            modalTitle.textContent = '編輯行程';
+            if(modalTitle) modalTitle.textContent = '編輯行程';
             const item = window.currentItinerary[index];
-            document.getElementById('time').value = item.time || '';
-            document.getElementById('activity').value = item.activity || '';
-            document.getElementById('location').value = item.location || '';
-            document.getElementById('details').value = item.details || '';
-            document.getElementById('delete-btn').classList.remove('hidden');
+            
+            const setVal = (id, val) => {
+                const el = document.getElementById(id);
+                if(el) el.value = val;
+            };
+
+            setVal('time', item.time || '');
+            setVal('activity', item.activity || '');
+            setVal('location', item.location || '');
+            setVal('details', item.details || '');
+            
+            const deleteBtn = document.getElementById('delete-btn');
+            if(deleteBtn) deleteBtn.classList.remove('hidden');
             openModalAnimation();
         };
 
         const openModalAnimation = () => {
+            if(!modal) return;
             modal.classList.remove('hidden');
             // 簡單的淡入動畫
             setTimeout(() => {
@@ -520,52 +523,22 @@
         };
 
         window.closeModal = () => {
+            if(!modal) return;
             const content = modal.querySelector('.modal-content');
             content.classList.remove('scale-100', 'opacity-100');
             content.classList.add('scale-95', 'opacity-0');
             
             setTimeout(() => {
                 modal.classList.add('hidden');
-                document.getElementById('delete-btn').classList.add('hidden');
-                modalForm.reset();
+                const deleteBtn = document.getElementById('delete-btn');
+                if(deleteBtn) deleteBtn.classList.add('hidden');
+                if(modalForm) modalForm.reset();
             }, 200);
         };
 
-        modalForm.addEventListener('submit', async (e) => {
-            e.preventDefault();
-            const time = document.getElementById('time').value.trim();
-            const activity = document.getElementById('activity').value.trim();
-            const location = document.getElementById('location').value.trim();
-            const details = document.getElementById('details').value.trim();
-            
-            if (!activity) { showStatusMessage('請輸入活動名稱', true); return; }
-            
-            const newItem = { 
-                time, activity, location, details, 
-                id: editingIndex !== null ? window.currentItinerary[editingIndex].id : crypto.randomUUID() 
-            };
-            
-            let updatedItems = [...(window.currentItinerary || [])];
-            if (editingIndex !== null) { updatedItems[editingIndex] = newItem; } else { updatedItems.push(newItem); }
-
-            await saveItinerary(window.selectedDate, updatedItems);
-            window.closeModal();
-        });
-
-        document.getElementById('delete-btn').addEventListener('click', async () => {
-            if (editingIndex !== null) {
-                if (confirm("確定要刪除此行程嗎？")) {
-                    const updatedItems = [...(window.currentItinerary || [])];
-                    updatedItems.splice(editingIndex, 1);
-                    await saveItinerary(window.selectedDate, updatedItems);
-                    window.closeModal();
-                }
-            }
-        });
-
-        
         window.closePermissionModal = () => {
-             document.getElementById('permission-modal').classList.add('hidden');
+             const modal = document.getElementById('permission-modal');
+             if(modal) modal.classList.add('hidden');
         };
 
         // --- Date Logic ---
@@ -582,25 +555,81 @@
                 btn.classList.add('text-zinc-500', 'hover:text-zinc-300');
             });
             const activeBtn = document.getElementById(`date-${date.replace('/', '-')}`);
-            activeBtn.classList.remove('text-zinc-500', 'hover:text-zinc-300');
-            activeBtn.classList.add('bg-white', 'text-black', 'shadow-md');
+            if(activeBtn) {
+                activeBtn.classList.remove('text-zinc-500', 'hover:text-zinc-300');
+                activeBtn.classList.add('bg-white', 'text-black', 'shadow-md');
+            }
 
             // document.getElementById('current-date-title').textContent = `${date} 行程`;
             updateFlightInfo(date);
             if (isAuthReady) loadItinerary(date);
         };
 
+        // DOMContentLoaded: 確保 DOM 準備好再執行 UI 綁定
         document.addEventListener('DOMContentLoaded', () => {
+            // 初始化 UI 元素
+            modal = document.getElementById('itinerary-modal');
+            modalForm = document.getElementById('itinerary-form');
+            modalTitle = document.getElementById('modal-title');
+            
+            // 綁定 Event Listeners
+            if (modalForm) {
+                modalForm.addEventListener('submit', async (e) => {
+                    e.preventDefault();
+                    
+                    const getVal = (id) => {
+                        const el = document.getElementById(id);
+                        return el ? el.value.trim() : '';
+                    };
+
+                    const time = getVal('time');
+                    const activity = getVal('activity');
+                    const location = getVal('location');
+                    const details = getVal('details');
+                    
+                    if (!activity) { showStatusMessage('請輸入活動名稱', true); return; }
+                    
+                    const newItem = { 
+                        time, activity, location, details, 
+                        id: editingIndex !== null ? window.currentItinerary[editingIndex].id : crypto.randomUUID() 
+                    };
+                    
+                    let updatedItems = [...(window.currentItinerary || [])];
+                    if (editingIndex !== null) { updatedItems[editingIndex] = newItem; } else { updatedItems.push(newItem); }
+
+                    await saveItinerary(window.selectedDate, updatedItems);
+                    window.closeModal();
+                });
+            }
+
+            const deleteBtn = document.getElementById('delete-btn');
+            if (deleteBtn) {
+                deleteBtn.addEventListener('click', async () => {
+                    if (editingIndex !== null) {
+                        if (confirm("確定要刪除此行程嗎？")) {
+                            const updatedItems = [...(window.currentItinerary || [])];
+                            updatedItems.splice(editingIndex, 1);
+                            await saveItinerary(window.selectedDate, updatedItems);
+                            window.closeModal();
+                        }
+                    }
+                });
+            }
+
             const dateNav = document.getElementById('date-nav');
-            dates.forEach(date => {
-                const btn = document.createElement('button');
-                btn.id = `date-${date.replace('/', '-')}`;
-                // iOS Pill Style
-                btn.className = `date-btn px-5 py-2 rounded-full text-[15px] font-semibold transition-all duration-300 ease-out whitespace-nowrap`;
-                btn.innerHTML = `<span class="opacity-60 text-[11px] block leading-none mb-0.5">${date.split('/')[0]}月</span><span class="text-[17px] block leading-none tracking-tight">${date.split('/')[1]}</span>`;
-                btn.onclick = () => window.selectDate(date);
-                dateNav.appendChild(btn);
-            });
+            if (dateNav) {
+                dates.forEach(date => {
+                    const btn = document.createElement('button');
+                    btn.id = `date-${date.replace('/', '-')}`;
+                    // iOS Pill Style
+                    btn.className = `date-btn px-5 py-2 rounded-full text-[15px] font-semibold transition-all duration-300 ease-out whitespace-nowrap`;
+                    btn.innerHTML = `<span class="opacity-60 text-[11px] block leading-none mb-0.5">${date.split('/')[0]}月</span><span class="text-[17px] block leading-none tracking-tight">${date.split('/')[1]}</span>`;
+                    btn.onclick = () => window.selectDate(date);
+                    dateNav.appendChild(btn);
+                });
+            }
+            
+            // 初始化預設選擇
             window.selectDate(window.selectedDate); 
             initFirebase();
         });
@@ -682,9 +711,12 @@
     <div class="sticky top-0 z-40 bg-black/70 backdrop-blur-xl border-b border-white/5 pb-2">
         <div class="max-w-xl mx-auto px-4 pt-12 pb-2"> <!-- pt-12 for status bar space feeling -->
             <header class="flex justify-between items-end mb-4">
-                <div>
-                    <h1 class="text-[34px] font-bold tracking-tight text-white leading-tight">北海道之旅</h1>
-                    <p class="text-zinc-500 text-[13px] font-medium mt-0.5 tracking-wide uppercase">2026 Winter Trip</p>
+                <div class="flex items-center">
+                    <img src="hokicon.jpg" alt="Icon" class="w-10 h-10 rounded-full mr-3 border-2 border-white/20">
+                    <div>
+                        <h1 class="text-[34px] font-bold tracking-tight text-white leading-tight">北海盜</h1>
+                        <p class="text-zinc-500 text-[13px] font-medium mt-0.5 tracking-wide uppercase">2026 Winter Trip</p>
+                    </div>
                 </div>
                 <!-- Sync Button -->
                 <button onclick="openSyncModal()" class="w-9 h-9 bg-zinc-800 rounded-full flex items-center justify-center hover:bg-zinc-700 transition-colors">
